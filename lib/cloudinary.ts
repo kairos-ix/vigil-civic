@@ -8,10 +8,11 @@ cloudinary.config({
 
 export async function uploadImage(
   base64: string,
+  mimeType = 'image/jpeg',
   folder = 'vigil/issues'
 ): Promise<string> {
   const result = await cloudinary.uploader.upload(
-    `data:image/jpeg;base64,${base64}`,
+    `data:${mimeType};base64,${base64.replace(/^data:[^;]+;base64,/, '')}`,
     {
       folder,
       transformation: [

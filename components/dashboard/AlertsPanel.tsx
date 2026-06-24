@@ -1,7 +1,7 @@
 'use client'
 
 import { InfrastructureAlert } from '@/types'
-import { SEVERITY_COLORS, CATEGORIES } from '@/lib/constants'
+import { SEVERITY_COLORS, CATEGORIES, formatCategory } from '@/lib/constants'
 import { AlertTriangle, MapPin, Sparkles } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 
@@ -57,7 +57,7 @@ export function AlertsPanel({ alerts, isLoading }: AlertsPanelProps) {
             >
               <AlertTriangle className="h-4 w-4" style={{ color }} />
               <h4 className="font-semibold" style={{ color }}>
-                Cluster Alert: {category?.label || alert.category}
+                Cluster Alert: {category?.label || formatCategory(alert.category)}
               </h4>
               <span className="ml-auto text-xs font-medium text-muted-foreground">
                 {formatDistanceToNow(new Date(alert.createdAt), { addSuffix: true })}

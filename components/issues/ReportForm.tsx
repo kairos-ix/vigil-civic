@@ -13,6 +13,21 @@ import { CATEGORIES } from '@/lib/constants'
 
 const MapWrapper = dynamic(() => import('@/components/map/MapWrapper').then(mod => mod.MapWrapper), { ssr: false })
 
+const fileToBase64 = (file: File) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = reader.result
+      if (typeof result !== 'string') {
+        reject(new Error('Failed to read image file'))
+        return
+      }
+      resolve(result.replace(/^data:[^;]+;base64,/, ''))
+    }
+    reader.onerror = () => reject(reader.error || new Error('Failed to read image file'))
+    reader.readAsDataURL(file)
+  })
+
 export function ReportForm() {
   const router = useRouter()
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -83,8 +98,7 @@ export function ReportForm() {
     // Start AI Classification
     setIsClassifying(true)
     try {
-      const bytes = await file.arrayBuffer()
-      const base64 = Buffer.from(bytes).toString('base64')
+      const base64 = await fileToBase64(file)
       
       const res = await fetch('/api/ai/classify', {
         method: 'POST',
@@ -137,6 +151,7 @@ export function ReportForm() {
       const res = await fetch('/api/issues', {
         method: 'POST',
         body: data,
+        credentials: 'include',
       })
 
       const result = await res.json()

@@ -9,6 +9,50 @@ import Issue from '@/models/Issue'
 import User from '@/models/User'
 import InfrastructureAlert from '@/models/InfrastructureAlert'
 
+const AHMEDABAD_CENTER = { lat: 23.0225, lng: 72.5714 }
+const EARTH_RADIUS_METERS = 6378137
+const VALID_CATEGORIES = new Set([
+  'pothole',
+  'water_leakage',
+  'streetlight',
+  'waste',
+  'road_damage',
+  'drainage',
+  'other',
+])
+const VALID_SEVERITIES = new Set(['low', 'medium', 'high', 'critical'])
+
+function getValidCoordinate(value: FormDataEntryValue | null, fallback: number) {
+  const coordinate = typeof value === 'string' ? Number(value) : NaN
+  return Number.isFinite(coordinate) ? coordinate : fallback
+}
+
+function getValidLatitude(value: FormDataEntryValue | null) {
+  const lat = getValidCoordinate(value, AHMEDABAD_CENTER.lat)
+  return lat >= -90 && lat <= 90 ? lat : AHMEDABAD_CENTER.lat
+}
+
+function getValidLongitude(value: FormDataEntryValue | null) {
+  const lng = getValidCoordinate(value, AHMEDABAD_CENTER.lng)
+  return lng >= -180 && lng <= 180 ? lng : AHMEDABAD_CENTER.lng
+}
+
+function normalizeCategory(value: string | null | undefined, fallback = 'other') {
+  return value && VALID_CATEGORIES.has(value) ? value : fallback
+}
+
+function normalizeSeverity(value: string | null | undefined, fallback = 'low') {
+  return value && VALID_SEVERITIES.has(value) ? value : fallback
+}
+
+function withinRadiusFilter(lng: number, lat: number, radiusMeters: number) {
+  return {
+    $geoWithin: {
+      $centerSphere: [[lng, lat], radiusMeters / EARTH_RADIUS_METERS],
+    },
+  }
+}
+
 export async function GET(req: NextRequest) {
   try {
     await connectDB()
@@ -80,13 +124,15 @@ export async function POST(req: NextRequest) {
     const bodyDescription = formData.get('description') as string | null
     const bodyCategory = formData.get('category') as string | null
     const bodySeverity = formData.get('severity') as string | null
-    const lat = parseFloat(formData.get('lat') as string)
-    const lng = parseFloat(formData.get('lng') as string)
+    const rawLat = formData.get('lat')
+    const rawLng = formData.get('lng')
+    const lat = getValidLatitude(rawLat)
+    const lng = getValidLongitude(rawLng)
     const address = formData.get('address') as string | null
 
-    if (!file || isNaN(lat) || isNaN(lng)) {
+    if (!file) {
       return NextResponse.json(
-        { error: 'Image, lat, and lng are required' },
+        { error: 'Image is required' },
         { status: 400 }
       )
     }
@@ -95,26 +141,21 @@ export async function POST(req: NextRequest) {
     const imageBase64 = Buffer.from(bytes).toString('base64')
 
     // STEP 1: Upload image to Cloudinary
-    const imageUrl = await uploadImage(imageBase64)
+    const imageUrl = await uploadImage(imageBase64, file.type || 'image/jpeg')
 
     // STEP 2: AI Classification via Gemini
     const classification = await classifyIssueImage(imageBase64)
     const finalCategory = classification.issueDetected
-      ? classification.category
-      : bodyCategory || 'other'
+      ? normalizeCategory(classification.category, normalizeCategory(bodyCategory))
+      : normalizeCategory(bodyCategory)
     const finalSeverity = classification.issueDetected
-      ? classification.severity
-      : bodySeverity || 'low'
+      ? normalizeSeverity(classification.severity, normalizeSeverity(bodySeverity))
+      : normalizeSeverity(bodySeverity)
 
     // STEP 3: Duplicate Detection (same category, 200m radius, last 7 days, not resolved)
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
     const duplicate = await Issue.findOne({
-      location: {
-        $near: {
-          $geometry: { type: 'Point', coordinates: [lng, lat] },
-          $maxDistance: 200,
-        },
-      },
+      location: withinRadiusFilter(lng, lat, 200),
       category: finalCategory,
       status: { $ne: 'resolved' },
       createdAt: { $gte: sevenDaysAgo },
@@ -150,86 +191,79 @@ export async function POST(req: NextRequest) {
       statusHistory: [{ status: 'reported', changedAt: new Date() }],
     })
 
-    // STEP 5: Infrastructure Alert Check (3+ same category in 500m in last 30 days)
-    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
-    const nearbyCount = await Issue.countDocuments({
-      location: {
-        $near: {
-          $geometry: { type: 'Point', coordinates: [lng, lat] },
-          $maxDistance: 500,
-        },
-      },
-      category: finalCategory,
-      status: { $ne: 'resolved' },
-      createdAt: { $gte: thirtyDaysAgo },
-    })
-
-    if (nearbyCount >= 3) {
-      const nearbyIssues = await Issue.find({
-        location: {
-          $near: {
-            $geometry: { type: 'Point', coordinates: [lng, lat] },
-            $maxDistance: 500,
-          },
-        },
+    // STEP 5: Infrastructure Alert Check & User Stats (non-fatal — issue is already created)
+    try {
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+      const nearbyCount = await Issue.countDocuments({
+        location: withinRadiusFilter(lng, lat, 500),
         category: finalCategory,
         status: { $ne: 'resolved' },
+        createdAt: { $gte: thirtyDaysAgo },
       })
-        .limit(10)
-        .select('_id')
 
-      const aiInsight = await generateAreaInsight(
-        finalCategory,
-        nearbyCount,
-        address || 'this area'
-      )
+      if (nearbyCount >= 3) {
+        const nearbyIssues = await Issue.find({
+          location: withinRadiusFilter(lng, lat, 500),
+          category: finalCategory,
+          status: { $ne: 'resolved' },
+        })
+          .limit(10)
+          .select('_id')
 
-      await InfrastructureAlert.findOneAndUpdate(
-        {
-          'zone.center.coordinates': {
-            $near: {
-              $geometry: { type: 'Point', coordinates: [lng, lat] },
-              $maxDistance: 500,
+        const aiInsight = await generateAreaInsight(
+          finalCategory,
+          nearbyCount,
+          address || 'this area'
+        )
+
+        await InfrastructureAlert.findOneAndUpdate(
+          {
+            'zone.center': withinRadiusFilter(lng, lat, 500),
+            category: finalCategory,
+            status: 'active',
+          },
+          {
+            zone: {
+              center: { type: 'Point', coordinates: [lng, lat] },
+              radiusMeters: 500,
             },
+            issueCount: nearbyCount,
+            relatedIssues: nearbyIssues.map((i) => i._id),
+            aiInsight,
+            severity: finalSeverity,
+            category: finalCategory,
           },
-          category: finalCategory,
-          status: 'active',
-        },
-        {
-          zone: {
-            center: { type: 'Point', coordinates: [lng, lat] },
-            radiusMeters: 500,
-          },
-          issueCount: nearbyCount,
-          relatedIssues: nearbyIssues.map((i) => i._id),
-          aiInsight,
-          severity: finalSeverity,
-          category: finalCategory,
-        },
-        { upsert: true, new: true }
-      )
+          { upsert: true, new: true }
+        )
+      }
+    } catch (alertError) {
+      console.error('Infrastructure alert check failed (non-fatal):', alertError)
     }
 
     // Update user stats + points + level + badges
-    await User.findByIdAndUpdate(userId, {
-      $inc: { 'stats.reportsSubmitted': 1, points: 10 },
-      lastActive: new Date(),
-    })
+    try {
+      await User.findByIdAndUpdate(userId, {
+        $inc: { 'stats.reportsSubmitted': 1, points: 10 },
+        lastActive: new Date(),
+      })
 
-    const updatedUser = await User.findById(userId)
-    if (updatedUser) {
-      const newLevel = calculateLevel(updatedUser.points)
-      const newBadges = getNewBadges(
-        updatedUser.stats,
-        updatedUser.badges.map((b: { name: string }) => b.name)
-      )
-      if (newLevel !== updatedUser.level || newBadges.length > 0) {
-        updatedUser.level = newLevel
-        for (const badge of newBadges) {
-          updatedUser.badges.push({ ...badge, earnedAt: new Date() })
+      const updatedUser = await User.findById(userId)
+      if (updatedUser) {
+        const newLevel = calculateLevel(updatedUser.points)
+        const newBadges = getNewBadges(
+          updatedUser.stats,
+          updatedUser.badges.map((b: { name: string }) => b.name)
+        )
+        if (newLevel !== updatedUser.level || newBadges.length > 0) {
+          updatedUser.level = newLevel
+          for (const badge of newBadges) {
+            updatedUser.badges.push({ ...badge, earnedAt: new Date() })
+          }
+          await updatedUser.save()
         }
-        await updatedUser.save()
       }
+    } catch (statsError) {
+      console.error('User stats update failed (non-fatal):', statsError)
     }
 
     return NextResponse.json({ issue, isDuplicate: false }, { status: 201 })

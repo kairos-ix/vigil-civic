@@ -8,6 +8,12 @@ export const CATEGORIES = [
   { value: 'other', label: 'Other', icon: '📍', color: '#6B7280' },
 ]
 
+export const formatCategory = (category: string) =>
+  category
+    .split('_')
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ')
+
 export const SEVERITY_COLORS: Record<string, string> = {
   low: '#16A34A',
   medium: '#D97706',

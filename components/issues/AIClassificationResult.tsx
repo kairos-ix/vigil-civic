@@ -1,7 +1,7 @@
 'use client'
 
 import { ClassificationResult } from '@/lib/gemini'
-import { CATEGORIES, SEVERITY_COLORS } from '@/lib/constants'
+import { CATEGORIES, SEVERITY_COLORS, formatCategory } from '@/lib/constants'
 import { AlertCircle, CheckCircle2, ShieldAlert } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -44,7 +44,7 @@ export function AIClassificationResult({ result, isLoading }: AIResultProps) {
     )
   }
 
-  const categoryLabel = CATEGORIES.find(c => c.value === result.category)?.label || result.category
+  const categoryLabel = CATEGORIES.find(c => c.value === result.category)?.label || formatCategory(result.category)
   const severityColor = SEVERITY_COLORS[result.severity] || SEVERITY_COLORS.low
 
   return (

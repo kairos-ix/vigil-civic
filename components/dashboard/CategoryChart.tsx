@@ -1,7 +1,7 @@
 'use client'
 
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts'
-import { CATEGORIES } from '@/lib/constants'
+import { CATEGORIES, formatCategory } from '@/lib/constants'
 
 interface CategoryChartProps {
   data: Record<string, number>
@@ -13,7 +13,7 @@ export function CategoryChart({ data }: CategoryChartProps) {
     .map(([key, value]) => {
       const category = CATEGORIES.find(c => c.value === key)
       return {
-        name: category?.label || key,
+        name: category?.label || formatCategory(key),
         value,
         color: category?.color || '#94a3b8'
       }

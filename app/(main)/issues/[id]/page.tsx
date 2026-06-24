@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '@/hooks/useAuth'
 import { Issue } from '@/types'
-import { CATEGORIES, STATUS_CONFIG, SEVERITY_COLORS } from '@/lib/constants'
+import { CATEGORIES, STATUS_CONFIG, SEVERITY_COLORS, formatCategory } from '@/lib/constants'
 import { formatDistanceToNow, format } from 'date-fns'
 import { UpvoteButton } from '@/components/issues/UpvoteButton'
 import { StatusTimeline } from '@/components/issues/StatusTimeline'
@@ -135,7 +135,7 @@ export default function IssueDetailPage() {
               </span>
               <span className="inline-flex items-center gap-1.5 rounded-full bg-secondary px-2.5 py-0.5 text-xs font-medium">
                 <span>{category?.icon}</span>
-                {category?.label}
+                {category?.label || formatCategory(issue.category)}
               </span>
               <span 
                 className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold text-white capitalize shadow-sm"
@@ -164,7 +164,7 @@ export default function IssueDetailPage() {
               </div>
             </div>
 
-            {issue.images && issue.images.length > 0 && (
+            {issue.images && issue.images.length > 0 && !issue.images[0].includes('placehold.co') && (
               <div className="overflow-hidden rounded-xl border bg-muted shadow-sm aspect-video relative">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img 
