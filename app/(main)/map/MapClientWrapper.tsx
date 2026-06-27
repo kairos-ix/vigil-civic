@@ -3,23 +3,23 @@
 import { useIssues } from '@/hooks/useIssues'
 import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
-import { Issue } from '@/types'
 
 const IssueMap = dynamic(() => import('@/components/map/IssueMap'), { ssr: false })
 
 export function MapClientWrapper() {
-  const { issues } = useIssues({ limit: 100 }) // Fetch more for map
+  const { issues, updateIssue } = useIssues({ limit: 100 })
   const router = useRouter()
 
-  const handleMarkerClick = (issue: Issue) => {
-    router.push(`/issues/${issue._id}`)
-  }
-
   return (
-    <IssueMap 
-      issues={issues} 
-      onMarkerClick={handleMarkerClick}
+    <IssueMap
+      issues={issues}
+      onIssueUpdate={updateIssue}
+      onViewIssue={(issue) => router.push(`/issues/${issue._id}`)}
       className="h-full w-full z-0"
+      showLocateButton={true}
+      autoLocate={true}
+      showAddButton={true}
+      onAddClick={() => router.push('/report')}
     />
   )
 }

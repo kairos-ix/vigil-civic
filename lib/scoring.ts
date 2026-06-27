@@ -1,3 +1,6 @@
+import { createNotification } from '@/lib/notify'
+import User from '@/models/User'
+
 const SEVERITY_WEIGHTS: Record<string, number> = {
   low: 1,
   medium: 3,
@@ -49,4 +52,60 @@ export function getNewBadges(
   return rules
     .filter((r) => r.cond && !existing.includes(r.name))
     .map(({ name, icon }) => ({ name, icon }))
+}
+
+export async function updateUserStatsAndBadges(
+  userId: string,
+  _statsUpdates: Record<string, number>,
+  _pointsToAdd: number
+) {
+  // Import here to avoid circular dependency
+  const { computeUserStats } = await import('@/lib/computeUserStats')
+
+  // Compute live stats from the Issue collection — single source of truth
+  const { stats: liveStats, points: livePoints, level: liveLevel } =
+    await computeUserStats(userId)
+
+  // Sync the User model with accurate data
+  const updatedUser = await User.findByIdAndUpdate(
+    userId,
+    {
+      $set: {
+        stats: liveStats,
+        points: livePoints,
+        level: liveLevel,
+      },
+      lastActive: new Date(),
+    },
+    { new: true }
+  )
+  if (!updatedUser) return
+
+  // Check for new badges using live stats
+  const newBadges = getNewBadges(
+    liveStats,
+    updatedUser.badges.map((b: { name: string }) => b.name)
+  )
+
+  if (liveLevel !== updatedUser.level || newBadges.length > 0) {
+    if (liveLevel !== updatedUser.level) {
+      await createNotification(
+        userId,
+        'badge',
+        `You reached Level ${liveLevel}! Keep up the good work.`
+      )
+      updatedUser.level = liveLevel
+    }
+    
+    for (const badge of newBadges) {
+      updatedUser.badges.push({ ...badge, earnedAt: new Date() })
+      await createNotification(
+        userId,
+        'badge',
+        `You earned a new badge: ${badge.name}! ${badge.icon}`
+      )
+    }
+    
+    await updatedUser.save()
+  }
 }

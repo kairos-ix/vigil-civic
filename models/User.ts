@@ -6,7 +6,12 @@ export interface IUser extends Document {
   passwordHash: string
   avatar?: string
   points: number
-  level: 'newcomer' | 'reporter' | 'verifier' | 'guardian' | 'hero'
+  level: 'newcomer' | 'reporter' | 'verifier' | 'guardian' | 'hero' | 'developer'
+  role: 'citizen' | 'official'
+  isSeedUser: boolean
+  emailVerified?: boolean
+  emailVerificationCodeHash?: string
+  emailVerificationCodeExpiresAt?: Date
   badges: Array<{ name: string; earnedAt: Date; icon: string }>
   stats: {
     reportsSubmitted: number
@@ -17,6 +22,8 @@ export interface IUser extends Document {
   ward?: string
   city?: string
   lastActive: Date
+  resetCodeHash?: string
+  resetCodeExpiresAt?: Date
 }
 
 const UserSchema = new Schema<IUser>(
@@ -28,9 +35,18 @@ const UserSchema = new Schema<IUser>(
     points: { type: Number, default: 0 },
     level: {
       type: String,
-      enum: ['newcomer', 'reporter', 'verifier', 'guardian', 'hero'],
+      enum: ['newcomer', 'reporter', 'verifier', 'guardian', 'hero', 'developer'],
       default: 'newcomer',
     },
+    role: {
+      type: String,
+      enum: ['citizen', 'official'],
+      default: 'citizen',
+    },
+    isSeedUser: { type: Boolean, default: false },
+    emailVerified: { type: Boolean, default: true },
+    emailVerificationCodeHash: String,
+    emailVerificationCodeExpiresAt: Date,
     badges: [
       {
         name: String,
@@ -47,6 +63,8 @@ const UserSchema = new Schema<IUser>(
     ward: String,
     city: String,
     lastActive: { type: Date, default: Date.now },
+    resetCodeHash: String,
+    resetCodeExpiresAt: Date,
   },
   { timestamps: true }
 )

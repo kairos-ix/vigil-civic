@@ -1,15 +1,18 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-import { Camera, Image as ImageIcon, MapPin, Loader2, RefreshCw } from 'lucide-react'
+import { Camera, Image as ImageIcon, MapPin, Loader2, RefreshCw, AlertCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { useGeolocation } from '@/hooks/useGeolocation'
 import { AIClassificationResult } from './AIClassificationResult'
 import { ClassificationResult } from '@/lib/gemini'
+import { geocodeReverse } from '@/lib/geocode'
 import dynamic from 'next/dynamic'
 import { CATEGORIES } from '@/lib/constants'
+import { CustomSelect } from '@/components/ui/custom-select'
+import { getSession, setSession, removeSession, SESSION_KEYS } from '@/lib/sessionStorage'
 
 const MapWrapper = dynamic(() => import('@/components/map/MapWrapper').then(mod => mod.MapWrapper), { ssr: false })
 
@@ -28,40 +31,130 @@ const fileToBase64 = (file: File) =>
     reader.readAsDataURL(file)
   })
 
+function dataURLtoFile(dataurl: string, filename: string): File {
+  const arr = dataurl.split(',')
+  const mimeMatch = arr[0].match(/:(.*?);/)
+  const mime = mimeMatch ? mimeMatch[1] : 'image/jpeg'
+  const bstr = atob(arr[1])
+  let n = bstr.length
+  const u8arr = new Uint8Array(n)
+  while (n--) {
+    u8arr[n] = bstr.charCodeAt(n)
+  }
+  return new File([u8arr], filename, { type: mime })
+}
+
 export function ReportForm() {
   const router = useRouter()
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const { lat: geoLat, lng: geoLng, getLocation, loading: geoLoading } = useGeolocation()
+  const { lat: geoLat, lng: geoLng, accuracy, getLocation, loading: geoLoading } = useGeolocation()
 
-  const [step, setStep] = useState<1 | 2 | 3>(1)
+  const [step, setStep] = useState<1 | 2 | 3>(() => {
+    const saved = getSession<number>(SESSION_KEYS.REPORT_STEP)
+    return (saved === 2 || saved === 3 ? saved : 1) as 1 | 2 | 3
+  })
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [isClassifying, setIsClassifying] = useState(false)
   const [classification, setClassification] = useState<ClassificationResult | null>(null)
+  const [isGeocoding, setIsGeocoding] = useState(false)
+  const showLowAccuracyWarning = accuracy !== null && accuracy > 100
+  const geocodeDebounceRef = useRef<NodeJS.Timeout | null>(null)
   
-  const [formData, setFormData] = useState({
-    title: '',
-    description: '',
-    category: 'other',
-    severity: 'low',
-    lat: 23.0225,
-    lng: 72.5714,
-    address: ''
+  const [formData, setFormData] = useState(() => {
+    const draft = getSession<{
+      title: string
+      description: string
+      category: string
+      severity: string
+      lat: number
+      lng: number
+      address: string
+    }>(SESSION_KEYS.REPORT_DRAFT)
+    return draft || {
+      title: '',
+      description: '',
+      category: 'other',
+      severity: 'low',
+      lat: 23.0225,
+      lng: 72.5714,
+      address: ''
+    }
   })
 
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // Persist form draft and step to sessionStorage on changes
+  useEffect(() => {
+    setSession(SESSION_KEYS.REPORT_DRAFT, formData)
+  }, [formData])
+
+  useEffect(() => {
+    setSession(SESSION_KEYS.REPORT_STEP, step)
+  }, [step])
+
+  // Restore image from session storage on mount
+  useEffect(() => {
+    const savedDataUrl = getSession<string>(SESSION_KEYS.REPORT_IMAGE_BASE64)
+    if (savedDataUrl && !imageFile) {
+      try {
+        const file = dataURLtoFile(savedDataUrl, 'cached-image.jpg')
+        setImageFile(file)
+        setImagePreview(savedDataUrl)
+      } catch (e) {
+        console.error('Failed to restore image from session storage', e)
+      }
+    }
+  }, [imageFile])
+
+  // Geocode when pin is dragged (debounced)
+  const handleLocationSelect = useCallback(async (lat: number, lng: number) => {
+    setFormData(prev => ({ ...prev, lat, lng }))
+    
+    if (geocodeDebounceRef.current) {
+      clearTimeout(geocodeDebounceRef.current)
+    }
+    
+    geocodeDebounceRef.current = setTimeout(async () => {
+      setIsGeocoding(true)
+      try {
+        const result = await geocodeReverse(lat, lng)
+        setFormData(prev => ({ ...prev, address: result.address }))
+      } catch {
+        // Keep existing address
+      } finally {
+        setIsGeocoding(false)
+      }
+    }, 500)
+  }, [])
 
   // Request location when component mounts
   useEffect(() => {
     getLocation()
   }, [getLocation])
 
-  // Update map center when geolocation succeeds
+  // Geocode and update form when geolocation succeeds
   useEffect(() => {
-    if (geoLat && geoLng) {
-      setFormData(prev => ({ ...prev, lat: geoLat, lng: geoLng }))
+    if (geoLat && geoLng && !formData.address) {
+      const fetchAddress = async () => {
+        setIsGeocoding(true)
+        try {
+          const result = await geocodeReverse(geoLat, geoLng)
+          setFormData(prev => ({
+            ...prev,
+            lat: geoLat,
+            lng: geoLng,
+            address: result.address,
+          }))
+        } catch {
+          setFormData(prev => ({ ...prev, lat: geoLat, lng: geoLng }))
+        } finally {
+          setIsGeocoding(false)
+        }
+      }
+      fetchAddress()
     }
-  }, [geoLat, geoLng])
+  }, [geoLat, geoLng, accuracy, formData.address])
 
   // Pre-fill form when classification succeeds
   useEffect(() => {
@@ -99,6 +192,8 @@ export function ReportForm() {
     setIsClassifying(true)
     try {
       const base64 = await fileToBase64(file)
+      const dataUrl = `data:${file.type};base64,${base64}`
+      setSession(SESSION_KEYS.REPORT_IMAGE_BASE64, dataUrl)
       
       const res = await fetch('/api/ai/classify', {
         method: 'POST',
@@ -126,6 +221,15 @@ export function ReportForm() {
     setImageFile(null)
     setClassification(null)
     setStep(1)
+    removeSession(SESSION_KEYS.REPORT_IMAGE_BASE64)
+    // Reset draft but keep location
+    setFormData(prev => ({
+      ...prev,
+      title: '',
+      description: '',
+      category: 'other',
+      severity: 'low',
+    }))
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -157,19 +261,25 @@ export function ReportForm() {
       const result = await res.json()
 
       if (res.ok) {
+        // Clear the saved draft on successful submit
+        removeSession(SESSION_KEYS.REPORT_DRAFT)
+        removeSession(SESSION_KEYS.REPORT_STEP)
+        removeSession(SESSION_KEYS.REPORT_IMAGE_BASE64)
         if (result.isDuplicate) {
           toast.info('Similar issue found nearby. We added your vote to it!')
         } else {
           toast.success('Issue reported successfully! +10 points')
         }
+        router.refresh()
         router.push(`/issues/${result.issue._id}`)
+        // Intentionally not setting isSubmitting(false) here so the button stays disabled while navigating
       } else {
         toast.error(result.error || 'Failed to submit report')
+        setIsSubmitting(false)
       }
     } catch (error) {
       console.error(error)
       toast.error('An unexpected error occurred')
-    } finally {
       setIsSubmitting(false)
     }
   }
@@ -298,28 +408,24 @@ export function ReportForm() {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="mb-2 block text-sm font-medium">Category</label>
-                      <select
-                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      <CustomSelect
                         value={formData.category}
-                        onChange={(e) => setFormData(prev => ({ ...prev, category: e.target.value }))}
-                      >
-                        {CATEGORIES.map(c => (
-                          <option key={c.value} value={c.value}>{c.label}</option>
-                        ))}
-                      </select>
+                        onChange={(val) => setFormData(prev => ({ ...prev, category: val }))}
+                        options={CATEGORIES.map(c => ({ value: c.value, label: c.label }))}
+                      />
                     </div>
                     <div>
                       <label className="mb-2 block text-sm font-medium">Severity</label>
-                      <select
-                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      <CustomSelect
                         value={formData.severity}
-                        onChange={(e) => setFormData(prev => ({ ...prev, severity: e.target.value }))}
-                      >
-                        <option value="low">Low</option>
-                        <option value="medium">Medium</option>
-                        <option value="high">High</option>
-                        <option value="critical">Critical</option>
-                      </select>
+                        onChange={(val) => setFormData(prev => ({ ...prev, severity: val }))}
+                        options={[
+                          { value: 'low', label: 'Low' },
+                          { value: 'medium', label: 'Medium' },
+                          { value: 'high', label: 'High' },
+                          { value: 'critical', label: 'Critical' },
+                        ]}
+                      />
                     </div>
                   </div>
 
@@ -338,13 +444,16 @@ export function ReportForm() {
 
                 <div className="space-y-4 pt-4 border-t">
                   <div className="flex items-center justify-between">
-                    <label className="block text-sm font-medium">Location</label>
+                    <div>
+                      <label className="block text-sm font-medium">Confirm Location</label>
+                      <p className="text-xs text-muted-foreground mt-1">Move the pin to the exact spot. Accurate locations help authorities find the issue faster.</p>
+                    </div>
                     <Button 
                       type="button" 
                       variant="outline" 
                       size="sm" 
                       onClick={getLocation} 
-                      disabled={geoLoading}
+                      disabled={geoLoading || isGeocoding}
                     >
                       {geoLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <MapPin className="mr-2 h-4 w-4" />}
                       Use My Location
@@ -357,9 +466,16 @@ export function ReportForm() {
                       center={[formData.lat, formData.lng]} 
                       zoom={15} 
                       selectable={true}
-                      onLocationSelect={(lat, lng) => setFormData(prev => ({ ...prev, lat, lng }))}
+                      onLocationSelect={handleLocationSelect}
                     />
                   </div>
+
+                  {showLowAccuracyWarning && (
+                    <div className="flex items-start gap-2 rounded-md border border-primary/20 bg-primary/5 p-3 text-sm">
+                      <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                      <span>Location accuracy is ~{accuracy}m. Please drag the pin to correct it.</span>
+                    </div>
+                  )}
 
                   <div>
                     <input

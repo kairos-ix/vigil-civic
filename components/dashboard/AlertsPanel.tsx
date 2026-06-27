@@ -2,8 +2,10 @@
 
 import { InfrastructureAlert } from '@/types'
 import { SEVERITY_COLORS, CATEGORIES, formatCategory } from '@/lib/constants'
-import { AlertTriangle, MapPin, Sparkles } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, MapPin, Radar, Sparkles } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
+import Link from 'next/link'
+import { Button } from '@/components/ui/button'
 
 interface AlertsPanelProps {
   alerts: InfrastructureAlert[]
@@ -31,11 +33,24 @@ export function AlertsPanel({ alerts, isLoading }: AlertsPanelProps) {
 
   if (!alerts || alerts.length === 0) {
     return (
-      <div className="flex h-32 flex-col items-center justify-center rounded-lg border border-dashed text-center">
-        <div className="mb-2 flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-500">
-          <CheckCircle2 className="h-4 w-4" />
+      <div className="relative overflow-hidden rounded-[var(--radius-panel)] border bg-secondary/60 p-6 text-center surface-flat">
+        <div className="absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-primary/35 to-transparent" />
+        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-primary surface-raised">
+          <Radar className="h-7 w-7" />
         </div>
-        <p className="text-sm font-medium text-muted-foreground">No active infrastructure alerts</p>
+        <h4 className="text-lg font-bold text-foreground">No infrastructure clusters need escalation.</h4>
+        <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
+          Vigil is watching for repeated high-severity reports. Your city board is calm right now.
+        </p>
+        <div className="mt-5 flex flex-col items-center justify-center gap-3 sm:flex-row">
+          <div className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-sm font-semibold text-primary surface-flat">
+            <CheckCircle2 className="h-4 w-4" />
+            Live monitoring active
+          </div>
+          <Button asChild variant="outline" size="sm" className="min-h-10">
+            <Link href="/issues">Review all reports</Link>
+          </Button>
+        </div>
       </div>
     )
   }
@@ -49,7 +64,7 @@ export function AlertsPanel({ alerts, isLoading }: AlertsPanelProps) {
         return (
           <div 
             key={alert._id} 
-            className="overflow-hidden rounded-lg border shadow-sm transition-all hover:shadow-md"
+            className="overflow-hidden rounded-[var(--radius-card)] border bg-card surface-flat transition-all hover:surface-raised"
           >
             <div 
               className="flex items-center gap-2 px-4 py-2 border-b"
@@ -87,6 +102,3 @@ export function AlertsPanel({ alerts, isLoading }: AlertsPanelProps) {
     </div>
   )
 }
-
-// Add this import that was missed above
-import { CheckCircle2 } from 'lucide-react'

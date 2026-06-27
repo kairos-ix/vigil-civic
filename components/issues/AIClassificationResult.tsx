@@ -3,7 +3,6 @@
 import { ClassificationResult } from '@/lib/gemini'
 import { CATEGORIES, SEVERITY_COLORS, formatCategory } from '@/lib/constants'
 import { AlertCircle, CheckCircle2, ShieldAlert } from 'lucide-react'
-import { cn } from '@/lib/utils'
 
 interface AIResultProps {
   result: ClassificationResult | null
@@ -30,13 +29,13 @@ export function AIClassificationResult({ result, isLoading }: AIResultProps) {
 
   if (!result.issueDetected) {
     return (
-      <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/50 dark:bg-amber-900/20">
+      <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
         <div className="flex items-start gap-3">
-          <AlertCircle className="mt-0.5 h-5 w-5 text-amber-600 dark:text-amber-500" />
+          <AlertCircle className="mt-0.5 h-5 w-5 text-primary" />
           <div>
-            <h4 className="font-medium text-amber-900 dark:text-amber-300">No civic issue detected</h4>
-            <p className="mt-1 text-sm text-amber-700 dark:text-amber-400">
-              Our AI couldn't clearly identify a civic issue in this image. You can still proceed with manual details.
+            <h4 className="font-medium text-primary">No civic issue detected</h4>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Our AI could not clearly identify a civic issue in this image. You can still proceed with manual details.
             </p>
           </div>
         </div>

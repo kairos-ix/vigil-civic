@@ -1,4 +1,5 @@
 import mongoose from 'mongoose'
+import { DATABASE } from '@/lib/constants'
 
 const MONGODB_URI = process.env.MONGODB_URI!
 
@@ -12,7 +13,6 @@ interface MongooseCache {
 }
 
 declare global {
-  // eslint-disable-next-line no-var
   var mongoose: MongooseCache
 }
 
@@ -22,8 +22,16 @@ if (!global.mongoose) global.mongoose = cached
 export async function connectDB() {
   if (cached.conn) return cached.conn
   if (!cached.promise) {
-    cached.promise = mongoose.connect(MONGODB_URI, { bufferCommands: false })
+    cached.promise = mongoose.connect(MONGODB_URI, {
+      bufferCommands: false,
+      serverSelectionTimeoutMS: DATABASE.MONGO_SERVER_SELECTION_TIMEOUT_MS,
+    })
   }
-  cached.conn = await cached.promise
+  try {
+    cached.conn = await cached.promise
+  } catch (error) {
+    cached.promise = null
+    throw error
+  }
   return cached.conn
 }

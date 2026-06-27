@@ -3,12 +3,15 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
+import { useAuth } from '@/hooks/useAuth'
 import {
   LayoutDashboard,
   Map as MapIcon,
   AlertTriangle,
   Trophy,
-  PlusCircle
+  Shield,
+  PlusCircle,
+  Info
 } from 'lucide-react'
 
 const routes = [
@@ -16,15 +19,18 @@ const routes = [
   { href: '/map', label: 'Live Map', icon: MapIcon },
   { href: '/issues', label: 'All Issues', icon: AlertTriangle },
   { href: '/leaderboard', label: 'Leaderboard', icon: Trophy },
+  { href: '/about', label: 'About', icon: Info },
 ]
 
 export function Sidebar() {
   const pathname = usePathname()
+  const { user } = useAuth()
+  const isOfficial = user?.role === 'official'
 
   if (pathname === '/login' || pathname === '/register' || pathname === '/') return null
 
   return (
-    <aside className="hidden w-64 flex-col border-r bg-background md:flex h-[calc(100vh-4rem)] sticky top-16">
+    <aside className="hidden w-60 flex-col border-r bg-background lg:flex h-[calc(100vh-4rem)] sticky top-16">
       <nav className="flex flex-1 flex-col gap-2 p-4">
         {routes.map((route) => {
           const Icon = route.icon
@@ -42,6 +48,20 @@ export function Sidebar() {
             </Link>
           )
         })}
+
+        {isOfficial && (
+          <Link
+            href="/official"
+            className={cn(
+              'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all hover:bg-accent hover:text-accent-foreground',
+              pathname === '/official' ? 'bg-primary/10 text-primary hover:bg-primary/20' : 'text-muted-foreground'
+            )}
+          >
+            <Shield className="h-5 w-5" />
+            Control Panel
+          </Link>
+        )}
+
         <div className="mt-auto pt-4">
           <Link
             href="/report"

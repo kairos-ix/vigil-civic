@@ -1,14 +1,35 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { connectDB } from '@/lib/mongodb'
+import { activeIssueFilter } from '@/lib/queries'
+import { REAL_ISSUES_FILTER } from '@/lib/seedFilters'
 import Issue from '@/models/Issue'
 import InfrastructureAlert from '@/models/InfrastructureAlert'
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     await connectDB()
 
+    const { searchParams } = new URL(req.url)
+    const lat = searchParams.get('lat')
+    const lng = searchParams.get('lng')
+    const radius = searchParams.get('radius') || '20000'
+
+    const matchStage: Record<string, unknown> = {
+      ...activeIssueFilter(),
+      'images.0': { $exists: true },
+      ...REAL_ISSUES_FILTER,
+    }
+    if (lat && lng) {
+      matchStage.location = {
+        $geoWithin: {
+          $centerSphere: [[parseFloat(lng), parseFloat(lat)], parseInt(radius) / 6378137]
+        }
+      }
+    }
+
     // Total counts by status
     const statusAgg = await Issue.aggregate([
+      { $match: matchStage },
       { $group: { _id: '$status', count: { $sum: 1 } } },
     ])
 
@@ -21,6 +42,7 @@ export async function GET() {
 
     // Counts by category
     const categoryAgg = await Issue.aggregate([
+      { $match: matchStage },
       { $group: { _id: '$category', count: { $sum: 1 } } },
     ])
     const byCategory: Record<string, number> = {}
@@ -33,14 +55,21 @@ export async function GET() {
     startOfMonth.setDate(1)
     startOfMonth.setHours(0, 0, 0, 0)
     const resolvedThisMonth = await Issue.countDocuments({
+      ...matchStage,
       status: 'resolved',
       resolvedAt: { $gte: startOfMonth },
     })
 
     // Active alerts count
-    const activeAlerts = await InfrastructureAlert.countDocuments({
-      status: 'active',
-    })
+    const alertMatch: Record<string, unknown> = { status: 'active' }
+    if (lat && lng) {
+      alertMatch['zone.center'] = {
+        $geoWithin: {
+          $centerSphere: [[parseFloat(lng), parseFloat(lat)], parseInt(radius) / 6378137]
+        }
+      }
+    }
+    const activeAlerts = await InfrastructureAlert.countDocuments(alertMatch)
 
     return NextResponse.json({
       total,

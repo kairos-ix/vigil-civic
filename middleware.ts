@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
+import { AUTH } from '@/lib/constants'
+
 const PROTECTED = [
   '/map',
   '/dashboard',
@@ -10,10 +12,10 @@ const PROTECTED = [
   '/profile'
 ]
 
-const AUTH_ONLY = ['/login', '/register']
+const AUTH_ONLY = ['/login', '/register', '/request-reset', '/reset-password']
 
-export function proxy(req: NextRequest) {
-  const token = req.cookies.get('vigil_token')?.value
+export function middleware(req: NextRequest) {
+  const token = req.cookies.get(AUTH.COOKIE_NAME)?.value
   const path = req.nextUrl.pathname
 
   if (PROTECTED.some(r => path.startsWith(r)) && !token) {

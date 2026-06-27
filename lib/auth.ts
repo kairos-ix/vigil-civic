@@ -1,32 +1,94 @@
 import jwt from 'jsonwebtoken'
 import bcrypt from 'bcrypt'
-import { NextRequest } from 'next/server'
+import { cookies } from 'next/headers'
+import { connectDB } from '@/lib/mongodb'
+import { AUTH } from '@/lib/constants'
+import User from '@/models/User'
+import type { IUser } from '@/models/User'
 
 const SECRET = process.env.JWT_SECRET!
+
+type TokenPayload = jwt.JwtPayload & { userId: string }
 
 export const hashPassword = (p: string) => bcrypt.hash(p, 12)
 
 export const comparePassword = (p: string, h: string) => bcrypt.compare(p, h)
 
 export const generateToken = (userId: string) =>
-  jwt.sign({ userId }, SECRET, { expiresIn: '7d' })
+  jwt.sign({ userId }, SECRET, { expiresIn: `${AUTH.JWT_EXPIRY_SECONDS}s` })
 
-export function verifyToken(token: string): { userId: string } | null {
+export function verifyToken(token: string): TokenPayload | null {
   try {
-    return jwt.verify(token, SECRET) as { userId: string }
+    return jwt.verify(token, SECRET) as TokenPayload
   } catch {
     return null
   }
 }
 
-export function getTokenFromRequest(req: NextRequest): string | null {
-  const auth = req.headers.get('authorization')
-  if (auth?.startsWith('Bearer ')) return auth.substring(7)
-  return req.cookies.get('vigil_token')?.value || null
+function shouldRefreshToken(payload: TokenPayload): boolean {
+  if (payload.iat == null || payload.exp == null) return false
+  const now = Math.floor(Date.now() / 1000)
+  const lifetime = payload.exp - payload.iat
+  const elapsed = now - payload.iat
+  return elapsed >= lifetime * AUTH.JWT_REFRESH_RATIO
 }
 
-export async function getUserIdFromRequest(req: NextRequest): Promise<string | null> {
-  const token = getTokenFromRequest(req)
+export async function setAuthCookie(token: string) {
+  const cookieStore = await cookies()
+  cookieStore.set(AUTH.COOKIE_NAME, token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: AUTH.JWT_EXPIRY_SECONDS,
+    path: '/',
+  })
+}
+
+export async function clearAuthCookie() {
+  const cookieStore = await cookies()
+  cookieStore.set(AUTH.COOKIE_NAME, '', {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 0,
+    path: '/',
+  })
+}
+
+export async function getServerUser(): Promise<IUser | null> {
+  const cookieStore = await cookies()
+  const token = cookieStore.get(AUTH.COOKIE_NAME)?.value
   if (!token) return null
-  return verifyToken(token)?.userId || null
+
+  const payload = verifyToken(token)
+  if (!payload?.userId) return null
+
+  await connectDB()
+  const user = await User.findById(payload.userId).select('-passwordHash')
+  if (!user) return null
+
+  if (shouldRefreshToken(payload)) {
+    const newToken = generateToken(payload.userId)
+    await setAuthCookie(newToken)
+  }
+
+  return user
+}
+
+/** @deprecated Prefer getServerUser(); kept for route handlers that only need an id. */
+export async function getUserIdFromRequest(): Promise<string | null> {
+  const user = await getServerUser()
+  return user ? user._id.toString() : null
+}
+
+export function toSafeUser(user: IUser) {
+  const obj = user.toObject() as Record<string, unknown>
+  delete obj.passwordHash
+  delete obj.resetTokenHash
+  delete obj.resetTokenExpiresAt
+  delete obj.resetCodeHash
+  delete obj.resetCodeExpiresAt
+  delete obj.emailVerificationCodeHash
+  delete obj.emailVerificationCodeExpiresAt
+  return obj
 }

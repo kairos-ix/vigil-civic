@@ -5,12 +5,16 @@ export interface User {
   avatar?: string
   points: number
   level: string
+  role?: 'citizen' | 'official'
+  isSeedUser?: boolean
+  emailVerified?: boolean
   badges: Array<{ name: string; earnedAt: string; icon: string }>
   stats: {
     reportsSubmitted: number
     issuesVerified: number
     issuesResolved: number
     upvotesGiven: number
+    upvotesReceived: number
   }
   ward?: string
   city?: string
@@ -39,13 +43,17 @@ export interface Issue {
     category?: string
     severity?: string
     confidence?: number
-    isDuplicate?: boolean
   }
   priorityScore: number
-  comments: Array<{ user: User | string; text: string; createdAt: string }>
+  reporterBonusAwarded?: boolean
+  mergedReportsCount?: number
+  isSeedData?: boolean
+  comments: Array<{ _id: string; user: User | string; text: string; createdAt: string }>
   statusHistory: Array<{ status: string; changedAt: string }>
   createdAt: string
   updatedAt: string
+  editedAt?: string | null
+  deletedAt?: string | null
   resolvedAt?: string
 }
 

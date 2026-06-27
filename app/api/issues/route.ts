@@ -4,7 +4,21 @@ import { getUserIdFromRequest } from '@/lib/auth'
 import { classifyIssueImage } from '@/lib/gemini'
 import { uploadImage } from '@/lib/cloudinary'
 import { generateAreaInsight } from '@/lib/gemini'
-import { calculatePriorityScore, calculateLevel, getNewBadges } from '@/lib/scoring'
+import { calculatePriorityScore, calculateLevel, getNewBadges, updateUserStatsAndBadges } from '@/lib/scoring'
+import {
+  promoteIfThresholdReached,
+  toObjectId,
+} from '@/lib/promoteIfThresholdReached'
+import { activeIssueFilter } from '@/lib/queries'
+import {
+  CLUSTER_RADIUS_METERS,
+  CLUSTER_THRESHOLD,
+  DUPLICATE_DAYS,
+  DUPLICATE_RADIUS_METERS,
+  POINTS,
+} from '@/lib/constants'
+import { geocodeReverse } from '@/lib/geocode'
+import { notifyCityUsers } from '@/lib/notify'
 import Issue from '@/models/Issue'
 import User from '@/models/User'
 import InfrastructureAlert from '@/models/InfrastructureAlert'
@@ -21,6 +35,38 @@ const VALID_CATEGORIES = new Set([
   'other',
 ])
 const VALID_SEVERITIES = new Set(['low', 'medium', 'high', 'critical'])
+
+const IMAGE_SIGNATURES: Record<string, number[]> = {
+  jpeg: [0xff, 0xd8, 0xff],
+  png: [0x89, 0x50, 0x4e, 0x47],
+  gif: [0x47, 0x49, 0x46, 0x38],
+}
+
+// WebP has RIFF header (4 bytes) + file size (4 variable bytes) + WEBP (4 bytes)
+const WEBP_RIFF = [0x52, 0x49, 0x46, 0x46]
+const WEBP_MARKER = [0x57, 0x45, 0x42, 0x50]
+
+function validateImageMagicBytes(bytes: Buffer): boolean {
+  const header = Array.from(bytes.slice(0, 12))
+
+  // Check standard signatures (jpeg, png, gif)
+  for (const sig of Object.values(IMAGE_SIGNATURES)) {
+    if (header.length >= sig.length && sig.every((b, i) => header[i] === b)) {
+      return true
+    }
+  }
+
+  // Check WebP: bytes 0-3 must be "RIFF" and bytes 8-11 must be "WEBP"
+  if (
+    header.length >= 12 &&
+    WEBP_RIFF.every((b, i) => header[i] === b) &&
+    WEBP_MARKER.every((b, i) => header[i + 8] === b)
+  ) {
+    return true
+  }
+
+  return false
+}
 
 function getValidCoordinate(value: FormDataEntryValue | null, fallback: number) {
   const coordinate = typeof value === 'string' ? Number(value) : NaN
@@ -62,14 +108,16 @@ export async function GET(req: NextRequest) {
     const radius = searchParams.get('radius')
     const category = searchParams.get('category')
     const status = searchParams.get('status')
+    const reportedBy = searchParams.get('reportedBy')
     const page = parseInt(searchParams.get('page') || '1')
     const limit = parseInt(searchParams.get('limit') || '20')
     const skip = (page - 1) * limit
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const filter: any = {}
+    const filter: any = { ...activeIssueFilter(), 'images.0': { $exists: true } }
     if (category) filter.category = category
     if (status) filter.status = status
+    if (reportedBy) filter.reportedBy = reportedBy
 
     let query
     if (lat && lng) {
@@ -87,9 +135,7 @@ export async function GET(req: NextRequest) {
       query = Issue.find(filter).sort({ priorityScore: -1 })
     }
 
-    const total = await Issue.countDocuments(
-      lat && lng ? {} : filter
-    )
+    const total = await Issue.countDocuments(filter)
     const issues = await query
       .populate('reportedBy', 'name avatar level')
       .skip(skip)
@@ -113,7 +159,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     await connectDB()
-    const userId = await getUserIdFromRequest(req)
+    const userId = await getUserIdFromRequest()
     if (!userId) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
     }
@@ -137,8 +183,24 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    if (file.size > 5 * 1024 * 1024) {
+      return NextResponse.json(
+        { error: 'Image must be less than 5MB' },
+        { status: 400 }
+      )
+    }
+
     const bytes = await file.arrayBuffer()
-    const imageBase64 = Buffer.from(bytes).toString('base64')
+    const buffer = Buffer.from(bytes)
+
+    if (!validateImageMagicBytes(buffer)) {
+      return NextResponse.json(
+        { error: 'Invalid image file' },
+        { status: 400 }
+      )
+    }
+
+    const imageBase64 = buffer.toString('base64')
 
     // STEP 1: Upload image to Cloudinary
     const imageUrl = await uploadImage(imageBase64, file.type || 'image/jpeg')
@@ -153,25 +215,55 @@ export async function POST(req: NextRequest) {
       : normalizeSeverity(bodySeverity)
 
     // STEP 3: Duplicate Detection (same category, 200m radius, last 7 days, not resolved)
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+    const sevenDaysAgo = new Date(
+      Date.now() - DUPLICATE_DAYS * 24 * 60 * 60 * 1000
+    )
     const duplicate = await Issue.findOne({
-      location: withinRadiusFilter(lng, lat, 200),
+      ...activeIssueFilter(),
+      location: withinRadiusFilter(lng, lat, DUPLICATE_RADIUS_METERS),
       category: finalCategory,
       status: { $ne: 'resolved' },
       createdAt: { $gte: sevenDaysAgo },
     })
 
     if (duplicate) {
-      if (!duplicate.upvotes.map(String).includes(userId)) {
-        duplicate.upvotes.push(userId as unknown as import('mongoose').Types.ObjectId)
-        duplicate.priorityScore = calculatePriorityScore(
-          duplicate.upvotes.length,
-          duplicate.severity,
-          duplicate.createdAt
-        )
-        await duplicate.save()
+      const duplicateId = duplicate._id.toString()
+      const userObjectId = toObjectId(userId)
+
+      let merged = await Issue.findByIdAndUpdate(
+        duplicate._id,
+        { $inc: { mergedReportsCount: 1 } },
+        { returnDocument: 'after' }
+      )
+
+      if (!merged) {
+        return NextResponse.json({ error: 'Issue not found' }, { status: 404 })
       }
-      return NextResponse.json({ issue: duplicate, isDuplicate: true })
+
+      const withUpvote = await Issue.findOneAndUpdate(
+        { _id: duplicate._id, ...activeIssueFilter(), upvotes: { $ne: userObjectId } },
+        { $addToSet: { upvotes: userObjectId } },
+        { returnDocument: 'after' }
+      )
+
+      if (withUpvote) {
+        const priorityScore = calculatePriorityScore(
+          withUpvote.upvotes.length,
+          withUpvote.severity,
+          withUpvote.createdAt
+        )
+        merged = await Issue.findByIdAndUpdate(
+          withUpvote._id,
+          { $set: { priorityScore } },
+          { returnDocument: 'after' }
+        )
+        const promoted = await promoteIfThresholdReached(duplicateId)
+        merged = promoted ?? merged
+      } else {
+        merged = await Issue.findOne({ _id: duplicate._id, ...activeIssueFilter() })
+      }
+
+      return NextResponse.json({ issue: merged, isDuplicate: true })
     }
 
     // STEP 4: Create Issue with priority score
@@ -186,7 +278,7 @@ export async function POST(req: NextRequest) {
       images: [imageUrl],
       location: { type: 'Point', coordinates: [lng, lat], address },
       reportedBy: userId,
-      aiClassification: { ...classification, isDuplicate: false },
+      aiClassification: { ...classification },
       priorityScore: calculatePriorityScore(0, finalSeverity, new Date()),
       statusHistory: [{ status: 'reported', changedAt: new Date() }],
     })
@@ -195,15 +287,17 @@ export async function POST(req: NextRequest) {
     try {
       const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
       const nearbyCount = await Issue.countDocuments({
-        location: withinRadiusFilter(lng, lat, 500),
+        ...activeIssueFilter(),
+        location: withinRadiusFilter(lng, lat, CLUSTER_RADIUS_METERS),
         category: finalCategory,
         status: { $ne: 'resolved' },
         createdAt: { $gte: thirtyDaysAgo },
       })
 
-      if (nearbyCount >= 3) {
+      if (nearbyCount >= CLUSTER_THRESHOLD) {
         const nearbyIssues = await Issue.find({
-          location: withinRadiusFilter(lng, lat, 500),
+          ...activeIssueFilter(),
+          location: withinRadiusFilter(lng, lat, CLUSTER_RADIUS_METERS),
           category: finalCategory,
           status: { $ne: 'resolved' },
         })
@@ -216,25 +310,32 @@ export async function POST(req: NextRequest) {
           address || 'this area'
         )
 
-        await InfrastructureAlert.findOneAndUpdate(
-          {
-            'zone.center': withinRadiusFilter(lng, lat, 500),
-            category: finalCategory,
-            status: 'active',
-          },
-          {
+        let alert = await InfrastructureAlert.findOne({
+          'zone.center': withinRadiusFilter(lng, lat, CLUSTER_RADIUS_METERS),
+          category: finalCategory,
+          status: 'active',
+        })
+
+        if (alert) {
+          alert.issueCount = nearbyCount
+          alert.relatedIssues = nearbyIssues.map((i) => i._id)
+          alert.aiInsight = aiInsight
+          alert.severity = finalSeverity
+          await alert.save()
+        } else {
+          await InfrastructureAlert.create({
             zone: {
               center: { type: 'Point', coordinates: [lng, lat] },
-              radiusMeters: 500,
+              radiusMeters: CLUSTER_RADIUS_METERS,
             },
+            category: finalCategory,
+            status: 'active',
             issueCount: nearbyCount,
             relatedIssues: nearbyIssues.map((i) => i._id),
             aiInsight,
             severity: finalSeverity,
-            category: finalCategory,
-          },
-          { upsert: true, new: true }
-        )
+          })
+        }
       }
     } catch (alertError) {
       console.error('Infrastructure alert check failed (non-fatal):', alertError)
@@ -242,28 +343,45 @@ export async function POST(req: NextRequest) {
 
     // Update user stats + points + level + badges
     try {
-      await User.findByIdAndUpdate(userId, {
-        $inc: { 'stats.reportsSubmitted': 1, points: 10 },
-        lastActive: new Date(),
-      })
-
-      const updatedUser = await User.findById(userId)
-      if (updatedUser) {
-        const newLevel = calculateLevel(updatedUser.points)
-        const newBadges = getNewBadges(
-          updatedUser.stats,
-          updatedUser.badges.map((b: { name: string }) => b.name)
-        )
-        if (newLevel !== updatedUser.level || newBadges.length > 0) {
-          updatedUser.level = newLevel
-          for (const badge of newBadges) {
-            updatedUser.badges.push({ ...badge, earnedAt: new Date() })
-          }
-          await updatedUser.save()
-        }
-      }
+      await updateUserStatsAndBadges(
+        userId,
+        { 'stats.reportsSubmitted': 1 },
+        POINTS.REPORT
+      )
     } catch (statsError) {
       console.error('User stats update failed (non-fatal):', statsError)
+    }
+
+    // STEP 6: Notify users in the same city (non-fatal)
+    try {
+      let issueCity = ''
+      // Try to get city from geocode
+      if (lat && lng) {
+        const geo = await geocodeReverse(lat, lng)
+        issueCity = geo.city
+
+        // Also update the issue with ward/city if not set
+        if (geo.city || geo.ward) {
+          await Issue.findByIdAndUpdate(issue._id, {
+            $set: {
+              ...(geo.city && { 'location.city': geo.city }),
+              ...(geo.ward && { 'location.ward': geo.ward }),
+              ...(!address && geo.address && { 'location.address': geo.address }),
+            },
+          })
+        }
+      }
+
+      if (issueCity) {
+        await notifyCityUsers(
+          issueCity,
+          userId,
+          issue.title,
+          issue._id.toString()
+        )
+      }
+    } catch (notifyError) {
+      console.error('City notification failed (non-fatal):', notifyError)
     }
 
     return NextResponse.json({ issue, isDuplicate: false }, { status: 201 })

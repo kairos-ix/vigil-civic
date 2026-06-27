@@ -21,9 +21,13 @@ interface MapWrapperProps {
   center?: [number, number]
   zoom?: number
   onMarkerClick?: (issue: Issue) => void
+  onIssueUpdate?: (issue: Issue) => void
+  onViewIssue?: (issue: Issue) => void
   onLocationSelect?: (lat: number, lng: number) => void
   selectable?: boolean
   className?: string
+  showLocateButton?: boolean
+  autoLocate?: boolean
 }
 
 export function MapWrapper(props: MapWrapperProps) {

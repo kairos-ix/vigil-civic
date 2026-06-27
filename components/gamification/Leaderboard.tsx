@@ -1,13 +1,31 @@
 'use client'
 
+import Link from 'next/link'
 import { User } from '@/types'
 import { LevelBadge } from './LevelBadge'
 import { PointsBadge } from './PointsBadge'
-import { User as UserIcon } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 interface LeaderboardProps {
   users: User[]
   isLoading?: boolean
+}
+
+function avatarFor(user: User) {
+  return user.avatar || `https://api.dicebear.com/9.x/thumbs/svg?seed=${encodeURIComponent(user._id || user.email || user.name)}&backgroundColor=e8f6fb,dcebf2,ffffff&shapeColor=0787b7,3aa7c5,0c5f82`
+}
+
+function RankBadge({ rank }: { rank: number }) {
+  return (
+    <div
+      className={cn(
+        'flex h-9 w-9 items-center justify-center rounded-full border text-sm font-black surface-flat',
+        rank <= 3 ? 'border-primary/20 bg-primary/10 text-primary' : 'border-border bg-muted text-muted-foreground'
+      )}
+    >
+      #{rank}
+    </div>
+  )
 }
 
 export function Leaderboard({ users, isLoading }: LeaderboardProps) {
@@ -15,8 +33,8 @@ export function Leaderboard({ users, isLoading }: LeaderboardProps) {
     return (
       <div className="space-y-4">
         {[1, 2, 3, 4, 5].map((i) => (
-          <div key={i} className="flex items-center gap-4 rounded-xl border bg-card p-4 animate-pulse">
-            <div className="h-6 w-6 rounded bg-muted" />
+          <div key={i} className="flex items-center gap-4 rounded-[var(--radius-card)] border bg-card p-4 animate-pulse">
+            <div className="h-9 w-9 rounded-full bg-muted" />
             <div className="h-10 w-10 rounded-full bg-muted" />
             <div className="flex-1 space-y-2">
               <div className="h-4 w-32 rounded bg-muted" />
@@ -31,7 +49,7 @@ export function Leaderboard({ users, isLoading }: LeaderboardProps) {
 
   if (!users || users.length === 0) {
     return (
-      <div className="flex h-32 items-center justify-center rounded-xl border border-dashed text-sm text-muted-foreground">
+      <div className="flex h-32 items-center justify-center rounded-[var(--radius-card)] border border-dashed text-sm text-muted-foreground">
         No leaderboard data available
       </div>
     )
@@ -39,49 +57,48 @@ export function Leaderboard({ users, isLoading }: LeaderboardProps) {
 
   return (
     <div className="space-y-3">
-      {users.map((user, index) => (
-        <div 
-          key={user._id} 
-          className="flex items-center gap-4 rounded-xl border bg-card p-4 transition-all hover:shadow-md"
-        >
-          <div className="flex h-8 w-8 items-center justify-center font-bold text-muted-foreground">
-            {index === 0 && '🥇'}
-            {index === 1 && '🥈'}
-            {index === 2 && '🥉'}
-            {index > 2 && `#${index + 1}`}
-          </div>
-          
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 overflow-hidden">
-            {user.avatar ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={user.avatar} alt={user.name} className="h-full w-full object-cover" />
-            ) : (
-              <UserIcon className="h-5 w-5 text-primary" />
+      {users.map((user, index) => {
+        const rank = index + 1
+
+        return (
+          <Link
+            key={user._id}
+            href={`/profile/${user._id}`}
+            className={cn(
+              'flex items-center gap-4 rounded-[var(--radius-card)] border bg-card p-4 transition-all hover-lift',
+              rank <= 3 && 'bg-primary/5'
             )}
-          </div>
-          
-          <div className="flex flex-1 flex-col">
-            <span className="font-semibold">{user.name}</span>
-            <div className="flex items-center gap-2 mt-1">
-              <LevelBadge level={user.level} />
-              <span className="text-xs text-muted-foreground hidden sm:inline-block">
-                {user.stats?.reportsSubmitted || 0} reports
-              </span>
+          >
+            <RankBadge rank={rank} />
+
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary/10 ring-2 ring-primary/10">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={avatarFor(user)} alt={`${user.name} avatar`} className="h-full w-full object-cover" />
             </div>
-          </div>
-          
-          <div className="flex flex-col items-end gap-1">
-            <PointsBadge points={user.points} />
-            <div className="flex gap-1">
-              {user.badges?.slice(0, 3).map((badge, i) => (
-                <span key={i} title={badge.name} className="text-sm">
-                  {badge.icon}
+
+            <div className="flex flex-1 flex-col">
+              <span className="font-semibold">{user.name}</span>
+              <div className="mt-1 flex items-center gap-2">
+                <LevelBadge level={user.level} />
+                <span className="hidden text-xs text-muted-foreground sm:inline-block">
+                  {user.stats?.reportsSubmitted || 0} reports
                 </span>
-              ))}
+              </div>
             </div>
-          </div>
-        </div>
-      ))}
+
+            <div className="flex flex-col items-end gap-1">
+              <PointsBadge points={user.points} />
+              <div className="flex gap-1">
+                {user.badges?.slice(0, 3).map((badge, i) => (
+                  <span key={i} title={badge.name} className="text-sm">
+                    {badge.icon}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </Link>
+        )
+      })}
     </div>
   )
 }

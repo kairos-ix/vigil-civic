@@ -1,4 +1,5 @@
-import { Shield, ShieldAlert, ShieldCheck, ShieldHalf, ShieldBan } from 'lucide-react'
+import { Shield, ShieldAlert, ShieldCheck, ShieldHalf, ShieldBan, Crown } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface LevelBadgeProps {
@@ -6,12 +7,13 @@ interface LevelBadgeProps {
   className?: string
 }
 
-const levelConfig: Record<string, { label: string; icon: any; color: string; bg: string }> = {
-  newcomer: { label: 'Newcomer', icon: ShieldBan, color: 'text-slate-500', bg: 'bg-slate-100 dark:bg-slate-900' },
-  reporter: { label: 'Reporter', icon: ShieldHalf, color: 'text-blue-500', bg: 'bg-blue-100 dark:bg-blue-900/30' },
-  verifier: { label: 'Verifier', icon: Shield, color: 'text-emerald-500', bg: 'bg-emerald-100 dark:bg-emerald-900/30' },
-  guardian: { label: 'Guardian', icon: ShieldCheck, color: 'text-violet-500', bg: 'bg-violet-100 dark:bg-violet-900/30' },
-  hero: { label: 'Vigil Hero', icon: ShieldAlert, color: 'text-amber-500', bg: 'bg-amber-100 dark:bg-amber-900/30' },
+const levelConfig: Record<string, { label: string; icon: LucideIcon; color: string; bg: string }> = {
+  newcomer: { label: 'Newcomer', icon: ShieldBan, color: 'text-muted-foreground', bg: 'bg-muted' },
+  reporter: { label: 'Reporter', icon: ShieldHalf, color: 'text-primary', bg: 'bg-primary/10' },
+  verifier: { label: 'Verifier', icon: Shield, color: 'text-primary', bg: 'bg-primary/10' },
+  guardian: { label: 'Guardian', icon: ShieldCheck, color: 'text-primary', bg: 'bg-primary/10' },
+  hero: { label: 'Vigil Hero', icon: ShieldAlert, color: 'text-primary', bg: 'bg-primary/10' },
+  developer: { label: 'Developer', icon: Crown, color: 'text-yellow-500', bg: 'bg-yellow-500/10' },
 }
 
 export function LevelBadge({ level, className }: LevelBadgeProps) {

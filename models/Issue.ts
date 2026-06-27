@@ -22,16 +22,24 @@ export interface IIssue extends Document {
     severity?: string
     confidence?: number
     rawDescription?: string
-    isDuplicate?: boolean
-    duplicateOf?: mongoose.Types.ObjectId
   }
   priorityScore: number
+  reporterBonusAwarded: boolean
+  notifiedVerified: boolean
+  mergedReportsCount: number
+  isSeedData: boolean
   comments: Array<{
     user: mongoose.Types.ObjectId
     text: string
     createdAt: Date
   }>
-  statusHistory: Array<{ status: string; changedAt: Date }>
+  statusHistory: Array<{
+    status: string
+    changedAt: Date
+    changedBy?: mongoose.Types.ObjectId | null
+  }>
+  editedAt?: Date | null
+  deletedAt?: Date | null
   resolvedAt?: Date
 }
 
@@ -84,10 +92,12 @@ const IssueSchema = new Schema<IIssue>(
       severity: String,
       confidence: Number,
       rawDescription: String,
-      isDuplicate: Boolean,
-      duplicateOf: Schema.Types.ObjectId,
     },
     priorityScore: { type: Number, default: 0 },
+reporterBonusAwarded: { type: Boolean, default: false },
+  notifiedVerified: { type: Boolean, default: false },
+  mergedReportsCount: { type: Number, default: 1 },
+  isSeedData: { type: Boolean, default: false },
     comments: [
       {
         user: { type: Schema.Types.ObjectId, ref: 'User' },
@@ -99,8 +109,11 @@ const IssueSchema = new Schema<IIssue>(
       {
         status: String,
         changedAt: { type: Date, default: Date.now },
+        changedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
       },
     ],
+    editedAt: { type: Date, default: null },
+    deletedAt: { type: Date, default: null },
     resolvedAt: Date,
   },
   { timestamps: true }

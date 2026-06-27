@@ -4,13 +4,14 @@ import { useIssues } from '@/hooks/useIssues'
 import { IssueCard } from '@/components/issues/IssueCard'
 import { Button } from '@/components/ui/button'
 import { CATEGORIES, STATUS_CONFIG } from '@/lib/constants'
-import { Loader2, Search, SlidersHorizontal } from 'lucide-react'
+import { Search, SlidersHorizontal } from 'lucide-react'
+import { CustomSelect } from '@/components/ui/custom-select'
 
 export default function IssuesPage() {
   const { issues, loading, filters, updateFilters, pagination, setPage } = useIssues()
 
   return (
-    <div className="flex flex-col gap-6 p-4 md:p-8 animate-in fade-in duration-500">
+    <div className="relative flex flex-col gap-6 p-4 md:p-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-foreground">All Issues</h1>
@@ -20,43 +21,53 @@ export default function IssuesPage() {
         </div>
 
         {/* Filters */}
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="relative">
-            <select
-              className="h-10 appearance-none rounded-md border bg-background pl-3 pr-8 text-sm outline-none focus:ring-2 focus:ring-primary"
+        <div className="flex flex-wrap items-center gap-2 rounded-[var(--radius-card)] border bg-card p-2 surface-flat">
+          <div className="hidden h-12 w-12 items-center justify-center rounded-lg bg-primary/10 text-primary md:flex">
+            <SlidersHorizontal className="h-5 w-5" />
+          </div>
+          <div className="w-[180px]">
+            <CustomSelect
               value={filters.category || ''}
-              onChange={(e) => updateFilters({ category: e.target.value || undefined })}
-            >
-              <option value="">All Categories</option>
-              {CATEGORIES.map(c => (
-                <option key={c.value} value={c.value}>{c.label}</option>
-              ))}
-            </select>
+              onChange={(val) => updateFilters({ category: val || undefined })}
+              options={[
+                { value: '', label: 'All Categories' },
+                ...CATEGORIES.map(c => ({ value: c.value, label: c.label }))
+              ]}
+              placeholder="All Categories"
+            />
           </div>
           
-          <div className="relative">
-            <select
-              className="h-10 appearance-none rounded-md border bg-background pl-3 pr-8 text-sm outline-none focus:ring-2 focus:ring-primary"
+          <div className="w-[180px]">
+            <CustomSelect
               value={filters.status || ''}
-              onChange={(e) => updateFilters({ status: e.target.value || undefined })}
-            >
-              <option value="">All Statuses</option>
-              {Object.entries(STATUS_CONFIG).map(([key, config]) => (
-                <option key={key} value={key}>{config.label}</option>
-              ))}
-            </select>
+              onChange={(val) => updateFilters({ status: val || undefined })}
+              options={[
+                { value: '', label: 'All Statuses' },
+                ...Object.entries(STATUS_CONFIG).map(([key, config]) => ({ value: key, label: config.label }))
+              ]}
+              placeholder="All Statuses"
+            />
           </div>
         </div>
       </div>
 
       {loading && issues.length === 0 ? (
-        <div className="flex h-64 items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
+          {[1, 2, 3, 4].map((item) => (
+            <div key={item} className="h-[360px] rounded-[var(--radius-card)] border bg-card p-4 surface-flat">
+              <div className="mb-4 h-44 rounded-xl bg-muted animate-shimmer" />
+              <div className="mb-3 h-5 w-3/4 rounded bg-muted animate-shimmer" />
+              <div className="h-4 w-1/2 rounded bg-muted animate-shimmer" />
+            </div>
+          ))}
         </div>
       ) : issues.length === 0 ? (
-        <div className="flex h-64 flex-col items-center justify-center rounded-xl border border-dashed text-muted-foreground">
-          <Search className="mb-4 h-8 w-8 opacity-20" />
-          <p>No issues found matching your filters.</p>
+        <div className="flex min-h-72 flex-col items-center justify-center rounded-[var(--radius-panel)] border bg-card p-8 text-center surface-flat">
+          <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+            <Search className="h-7 w-7" />
+          </div>
+          <h2 className="text-xl font-bold">No reports match this view.</h2>
+          <p className="mt-2 max-w-md text-sm text-muted-foreground">Try a broader filter, or start a report if you are seeing an issue on the ground.</p>
           {(filters.category || filters.status) && (
             <Button 
               variant="link" 
@@ -68,7 +79,7 @@ export default function IssuesPage() {
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
             {issues.map((issue) => (
               <IssueCard key={issue._id} issue={issue} />
             ))}
@@ -98,6 +109,8 @@ export default function IssuesPage() {
           )}
         </>
       )}
+
+
     </div>
   )
 }

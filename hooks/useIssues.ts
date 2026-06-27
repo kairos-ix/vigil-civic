@@ -58,7 +58,7 @@ export function useIssues(initialFilters?: UseIssuesProps) {
   }, [])
 
   useEffect(() => {
-    fetchIssues(filters)
+    queueMicrotask(() => fetchIssues(filters))
   }, [filters, fetchIssues])
 
   const updateFilters = (newFilters: Partial<UseIssuesProps>) => {
@@ -71,5 +71,25 @@ export function useIssues(initialFilters?: UseIssuesProps) {
 
   const refetch = () => fetchIssues(filters)
 
-  return { issues, loading, error, pagination, filters, updateFilters, setPage, refetch }
+  const updateIssue = useCallback((updated: Issue) => {
+    setIssues((prev) =>
+      prev.map((issue) => {
+        if (issue._id !== updated._id) return issue
+        return {
+          ...issue,
+          upvotes: updated.upvotes,
+          status: updated.status,
+          statusHistory: updated.statusHistory,
+          verifiedBy: updated.verifiedBy,
+          priorityScore: updated.priorityScore,
+          resolvedAt: updated.resolvedAt,
+          updatedAt: updated.updatedAt,
+          reporterBonusAwarded: updated.reporterBonusAwarded,
+          mergedReportsCount: updated.mergedReportsCount,
+        }
+      })
+    )
+  }, [])
+
+  return { issues, loading, error, pagination, filters, updateFilters, setPage, refetch, updateIssue }
 }

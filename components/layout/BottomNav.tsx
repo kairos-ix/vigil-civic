@@ -8,7 +8,8 @@ import {
   Map as MapIcon,
   AlertTriangle,
   Trophy,
-  Plus
+  Plus,
+  Info
 } from 'lucide-react'
 
 const routes = [
@@ -16,6 +17,7 @@ const routes = [
   { href: '/map', label: 'Map', icon: MapIcon },
   { href: '/issues', label: 'Issues', icon: AlertTriangle },
   { href: '/leaderboard', label: 'Rank', icon: Trophy },
+  { href: '/about', label: 'About', icon: Info },
 ]
 
 export function BottomNav() {
@@ -29,7 +31,7 @@ export function BottomNav() {
       {pathname !== '/report' && (
         <Link
           href="/report"
-          className="fixed bottom-20 right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-transform hover:scale-105 active:scale-95 md:hidden"
+          className="fixed bottom-20 right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-transform hover:scale-105 active:scale-95 lg:hidden"
         >
           <Plus className="h-6 w-6" />
           <span className="sr-only">Report Issue</span>
@@ -37,7 +39,7 @@ export function BottomNav() {
       )}
 
       {/* Bottom Navigation Bar */}
-      <nav className="fixed bottom-0 left-0 z-30 flex h-16 w-full border-t bg-background md:hidden">
+      <nav className="fixed bottom-0 left-0 z-30 flex h-16 w-full border-t bg-background lg:hidden">
         {routes.map((route) => {
           const Icon = route.icon
           const isActive = pathname === route.href
@@ -63,7 +65,7 @@ export function BottomNav() {
         })}
       </nav>
       {/* Safe area padding for mobile */}
-      <div className="h-16 w-full md:hidden" />
+      <div className="h-16 w-full lg:hidden" />
     </>
   )
 }
