@@ -13,8 +13,6 @@ import {
 } from '@/lib/sessionStorage'
 
 const SKIP_ME_PATHS = [
-  '/',
-  '/about',
   '/login',
   '/register',
   '/request-reset',

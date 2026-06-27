@@ -8,6 +8,8 @@ import { BottomNav } from '@/components/layout/BottomNav'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '@/hooks/useAuth'
 
+const PUBLIC_PATHS = ['/about']
+
 export default function MainLayout({
   children,
 }: {
@@ -16,14 +18,15 @@ export default function MainLayout({
   const pathname = usePathname()
   const router = useRouter()
   const { user, isLoading } = useAuth()
+  const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p))
 
   useEffect(() => {
-    if (!isLoading && !user) {
+    if (!isPublic && !isLoading && !user) {
       window.location.replace('/login')
     }
-  }, [isLoading, user])
+  }, [isPublic, isLoading, user])
 
-  if (isLoading) {
+  if (!isPublic && isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50 dark:bg-black">
         <div className="text-center">
@@ -34,8 +37,8 @@ export default function MainLayout({
     )
   }
 
-  // Fallback if somehow reached without user
-  if (!user) {
+  // Fallback for protected pages
+  if (!isPublic && !user) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50 dark:bg-black">
         <div className="text-center">
@@ -51,7 +54,7 @@ export default function MainLayout({
       <Navbar />
       <div className="flex flex-1">
         <Sidebar />
-        <main className="flex-1 w-full pb-20 lg:pb-0 overflow-x-hidden">
+        <main className={`flex-1 w-full ${isPublic ? '' : 'pb-20 lg:pb-0'} overflow-x-hidden`}>
           <AnimatePresence mode="wait">
             <motion.div
               key={pathname}

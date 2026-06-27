@@ -1,10 +1,12 @@
 import mongoose from 'mongoose'
 import { DATABASE } from '@/lib/constants'
 
-const MONGODB_URI = process.env.MONGODB_URI!
-
-if (!MONGODB_URI) {
-  throw new Error('MONGODB_URI not defined')
+function getMongoURI(): string {
+  const uri = process.env.MONGODB_URI
+  if (!uri) {
+    throw new Error('MONGODB_URI not defined')
+  }
+  return uri
 }
 
 interface MongooseCache {
@@ -22,7 +24,7 @@ if (!global.mongoose) global.mongoose = cached
 export async function connectDB() {
   if (cached.conn) return cached.conn
   if (!cached.promise) {
-    cached.promise = mongoose.connect(MONGODB_URI, {
+    cached.promise = mongoose.connect(getMongoURI(), {
       bufferCommands: false,
       serverSelectionTimeoutMS: DATABASE.MONGO_SERVER_SELECTION_TIMEOUT_MS,
     })

@@ -6,7 +6,11 @@ import { AUTH } from '@/lib/constants'
 import User from '@/models/User'
 import type { IUser } from '@/models/User'
 
-const SECRET = process.env.JWT_SECRET!
+function getSecret(): string {
+  const s = process.env.JWT_SECRET
+  if (!s) throw new Error('JWT_SECRET not defined')
+  return s
+}
 
 type TokenPayload = jwt.JwtPayload & { userId: string }
 
@@ -15,11 +19,11 @@ export const hashPassword = (p: string) => bcrypt.hash(p, 12)
 export const comparePassword = (p: string, h: string) => bcrypt.compare(p, h)
 
 export const generateToken = (userId: string) =>
-  jwt.sign({ userId }, SECRET, { expiresIn: `${AUTH.JWT_EXPIRY_SECONDS}s` })
+  jwt.sign({ userId }, getSecret(), { expiresIn: `${AUTH.JWT_EXPIRY_SECONDS}s` })
 
 export function verifyToken(token: string): TokenPayload | null {
   try {
-    return jwt.verify(token, SECRET) as TokenPayload
+    return jwt.verify(token, getSecret()) as TokenPayload
   } catch {
     return null
   }

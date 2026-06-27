@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
+import { AboutNav } from '@/components/layout/AboutNav'
 import { AlertTriangle, ArrowRight, Bell, Brain, Camera, CheckCircle, MapPin, Route, ShieldCheck, Sparkles } from 'lucide-react'
 import LandingWrapper from '@/components/layout/LandingWrapper'
 import { DashboardStats } from '@/types'
@@ -80,15 +81,7 @@ export default async function LandingPage() {
               <img src="/logo.png" alt="Vigil Logo" className="h-8 w-auto object-contain drop-shadow-sm" />
               <span className="text-xl font-bold tracking-normal text-primary">Vigil</span>
             </Link>
-            <nav className="flex items-center gap-3 sm:gap-5">
-              <Link href="/about" className="focus-ring rounded-md px-2 py-2 text-sm font-semibold hover:text-primary">About</Link>
-              <Button variant="ghost" className="hidden sm:inline-flex" asChild>
-                <Link href="/login">Log in</Link>
-              </Button>
-              <Button asChild>
-                <Link href="/register">Sign up</Link>
-              </Button>
-            </nav>
+            <AboutNav />
           </div>
         </header>
 
