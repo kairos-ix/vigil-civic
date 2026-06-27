@@ -64,8 +64,6 @@ export function BottomNav() {
           )
         })}
       </nav>
-      {/* Safe area padding for mobile */}
-      <div className="h-16 w-full lg:hidden" />
     </>
   )
 }

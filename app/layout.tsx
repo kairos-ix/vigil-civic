@@ -4,6 +4,7 @@ import "./globals.css";
 import { Toaster } from 'sonner'
 import SmoothScroll from '@/components/layout/SmoothScroll'
 import { Footer } from '@/components/layout/Footer'
+import BottomNavWrapper from '@/components/layout/BottomNavWrapper'
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -52,6 +53,7 @@ export default function RootLayout({
             <Footer />
           </div>
         </SmoothScroll>
+        <BottomNavWrapper />
         <Toaster richColors position="top-center" />
       </body>
     </html>

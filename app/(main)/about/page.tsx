@@ -199,14 +199,14 @@ export default function AboutPage() {
               ].map((item) => {
                 const Icon = item.icon
                 return (
-                  <div key={item.action} className="flex items-center justify-between rounded-xl border bg-background p-3">
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <div key={item.action} className="flex flex-wrap sm:flex-nowrap items-center justify-between gap-3 rounded-xl border bg-background p-3">
+                    <div className="flex items-center gap-3 min-w-[120px]">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary shrink-0">
                         <Icon className="h-4 w-4" />
                       </div>
-                      <span className="text-sm font-bold">{item.action}</span>
+                      <span className="text-sm font-bold leading-tight">{item.action}</span>
                     </div>
-                    <span className="text-xs font-bold text-primary">{item.points}</span>
+                    <span className="text-xs font-bold text-primary text-right sm:text-left">{item.points}</span>
                   </div>
                 )
               })}

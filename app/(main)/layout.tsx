@@ -4,7 +4,6 @@ import { useEffect } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { Navbar } from '@/components/layout/Navbar'
 import { Sidebar } from '@/components/layout/Sidebar'
-import { BottomNav } from '@/components/layout/BottomNav'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '@/hooks/useAuth'
 
@@ -69,7 +68,8 @@ export default function MainLayout({
           </AnimatePresence>
         </main>
       </div>
-      <BottomNav />
+      {/* Safe area spacer for mobile fixed BottomNav */}
+      <div className="h-16 w-full lg:hidden" />
     </div>
   )
 }
