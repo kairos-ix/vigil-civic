@@ -21,7 +21,7 @@ export function AboutNav() {
         <div className="h-8 w-20 rounded bg-muted animate-pulse" />
       ) : user ? (
         <>
-          <Link href="/notifications" className="relative p-2 text-muted-foreground hover:text-foreground transition-colors">
+          <Link href="/dashboard" className="relative p-2 text-muted-foreground hover:text-foreground transition-colors">
             <Bell className="h-5 w-5" />
           </Link>
           <Link
